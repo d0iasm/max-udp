@@ -1,37 +1,51 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
+	"os"
 )
 
-var port string
-var host string
+func parseArgs() (string, string, string) {
+	var (
+		hostPtr = flag.String("host", "localhost", "The host name.")
+		portPtr = flag.String("port", "8888", "The port number.")
+		filePtr = flag.String("file", "", "The file path for sending.")
+	)
+	flag.Parse()
+	return *hostPtr, *portPtr, *filePtr
+}
 
-func parseArgs() {
-	// String defines a string flag with specified name,
-	// default value, and usage string.
-	portPtr := flag.String("port", "8888", "The port number.")
-	hostPtr := flag.String("host", "localhost", "The host name.")
-
-	port = *portPtr
-	host = *hostPtr
+func readfile(f string) []byte {
+	file, err := os.Open(f)
+	if err != nil {
+		panic(err)
+	}
+	b, err := ioutil.ReadAll(file)
+	if err != nil {
+		panic(err)
+	}
+	return b
 }
 
 func main() {
-	parseArgs()
+	host, port, file := parseArgs()
 	service := host + ":" + port
 
-	udpAddr, _ := net.ResolveUDPAddr("udp", service)
-	conn, err := net.DialUDP("udp", nil, udpAddr)
+	udpAddr, err := net.ResolveUDPAddr("udp4", service)
 	if err != nil {
-		// Handle error.
+		panic(err)
+	}
+	conn, err := net.DialUDP("udp4", nil, udpAddr)
+	if err != nil {
+		panic(err)
 	}
 	defer conn.Close()
 
+	bytes := readfile(file)
+
 	fmt.Println("Send a message to server from client.")
-	conn.Write([]byte("Hello From Client."))
-	conn.Write([]byte("Hello From Client."))
-	conn.Write([]byte("Hello From Client."))
-	conn.Write([]byte("Hello From Client."))
+	conn.Write(bytes)
 }

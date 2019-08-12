@@ -6,34 +6,34 @@ import (
 	"net"
 )
 
-var port string
-var host string
-
-func parseArgs() {
-	// String defines a string flag with specified name,
-	// default value, and usage string.
+func parseArgs() string {
 	portPtr := flag.String("port", "8888", "The port number.")
-	hostPtr := flag.String("host", "localhost", "The host name.")
-
-	port = *portPtr
-	host = *hostPtr
+	flag.Parse()
+	return *portPtr
 }
 
 func main() {
-	parseArgs()
-	service := host + ":" + port
-
-	udpAddr, _ := net.ResolveUDPAddr("udp", service)
-	conn, err := net.ListenUDP("udp", udpAddr)
+	port := parseArgs()
+	service := "0.0.0.0:" + port
+	udpAddr, err := net.ResolveUDPAddr("udp4", service)
 	if err != nil {
-		// Handle error.
+		panic(err)
+	}
+
+	conn, err := net.ListenUDP("udp4", udpAddr)
+	if err != nil {
+		panic(err)
 	}
 	defer conn.Close()
 
-	fmt.Println("Server is Running at " + service)
+	fmt.Println("Server is Running at " + conn.LocalAddr().String())
 	buf := make([]byte, 1500)
 	for {
-		n, addr, _ := conn.ReadFromUDP(buf)
-		fmt.Println("Received: ", string(buf[:n]), " from ", addr)
+		n, _, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			panic(err)
+		}
+		//fmt.Println("Received: ", string(buf[:n]), " from ", addr)
+                fmt.Print(buf[:n])
 	}
 }
