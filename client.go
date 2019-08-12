@@ -111,15 +111,12 @@ func main() {
 	buf := make([]byte, 1500)
 	for isRemaining(fins) {
 		send(conn, packets, fins)
-		// For test.
-		n, _, err := conn.ReadFromUDP(buf)
+
+		_, _, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println("FIN:", n)
-
-		for i := 0; i < len(fins); i++ {
-			fins[i] = true
-		}
+		fmt.Println("FIN:", buf[0])
+		fins[int(buf[0])] = true
 	}
 }
