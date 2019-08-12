@@ -53,7 +53,7 @@ func split(raw []byte) [][]byte {
 //    FIN (1 bit)
 //    Sequence number (7 bits)
 func addHeader(b [][]byte) [][]byte {
-	var packets [][]byte
+  packets := make([][]byte, len(b))
 	for i := 0; i < len(b); i++ {
 		header := make([]byte, 1)
 		header[0] = byte(i)
@@ -61,7 +61,7 @@ func addHeader(b [][]byte) [][]byte {
 			// Set a FIN flag.
 			header[0] |= (1 << 7)
 		}
-		fmt.Println(header[0])
+                packets[i] = append(header, b[i]...)
 	}
 	return packets
 }
@@ -81,13 +81,14 @@ func main() {
 	defer conn.Close()
 
 	raw := readfile(file)
-	fmt.Println("File content: ", len(raw), raw)
-	fmt.Println("File content: ", string(raw))
+	fmt.Println("File content:", len(raw), raw)
+	fmt.Println("File content:", string(raw))
 	bytes := split(raw)
-	_ = addHeader(bytes)
+        packets := addHeader(bytes)
+
+        fins := make([]int, len(packets))
 
 	fmt.Println("Send a message to server from client.")
-
 	for i := 0; i < len(bytes); i++ {
 		header := make([]byte, 1)
 		header[0] = byte(i)
