@@ -34,6 +34,7 @@ func main() {
 			panic(err)
 		}
 		//fmt.Println("Received: ", string(buf[:n]), " from ", addr)
-		fmt.Print(buf[:n])
+		//fmt.Print(buf[:n])
+		fmt.Println(buf[:n], string(buf[:n]))
 	}
 }

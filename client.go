@@ -57,12 +57,14 @@ func main() {
 	defer conn.Close()
 
 	raw := readfile(file)
-        fmt.Println("File content: ", len(raw), raw)
-        fmt.Println("File content: ", string(raw))
+	fmt.Println("File content: ", len(raw), raw)
+	fmt.Println("File content: ", string(raw))
 	bytes := split(raw)
 
 	fmt.Println("Send a message to server from client.")
 	for i := 0; i < len(bytes); i++ {
-	  conn.Write(bytes[i])
+		header := make([]byte, 1)
+		header[0] = byte(i)
+		conn.Write(append(header, bytes[i]...))
 	}
 }
