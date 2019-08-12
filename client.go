@@ -33,15 +33,15 @@ func readfile(f string) []byte {
 // Split an original bytes to chunks which maximum size is 1400.
 func split(raw []byte) [][]byte {
 	var b [][]byte
-	size := 1400
+	size := 14 // TODO: 1400
 	for i := 0; ; i++ {
 		if i*size > len(raw) {
 			break
 		}
 		if i*size > len(raw)-size {
 			// Last packet, so it should resize.
-                        remain := len(raw) - i*size
-			b = append(b, raw[i*size:i*size + remain])
+			remain := len(raw) - i*size
+			b = append(b, raw[i*size:i*size+remain])
 			break
 		}
 		b = append(b, raw[i*size:(i*size)+size])
@@ -49,7 +49,21 @@ func split(raw []byte) [][]byte {
 	return b
 }
 
-func addHeader() {
+// 8-bit header has 2 fields:
+//    FIN (1 bit)
+//    Sequence number (7 bits)
+func addHeader(b [][]byte) [][]byte {
+	var packets [][]byte
+	for i := 0; i < len(b); i++ {
+		header := make([]byte, 1)
+		header[0] = byte(i)
+		if i == len(b)-1 {
+			// Set a FIN flag.
+			header[0] |= (1 << 7)
+		}
+		fmt.Println(header[0])
+	}
+	return packets
 }
 
 func main() {
@@ -70,6 +84,7 @@ func main() {
 	fmt.Println("File content: ", len(raw), raw)
 	fmt.Println("File content: ", string(raw))
 	bytes := split(raw)
+	_ = addHeader(bytes)
 
 	fmt.Println("Send a message to server from client.")
 
