@@ -30,27 +30,37 @@ func readfile(f string) []byte {
 	return b
 }
 
-// Split an original bytes to N chunks.
+// Split an original bytes to chunks which maximum size is 1400.
 func split(raw []byte) [][]byte {
-	n := 10
-	leng := len(raw) / (n - 1)
-	b := make([][]byte, n)
-	for i := 0; i < n-1; i++ {
-		b[i] = raw[i*leng : (i*leng)+leng]
+	var b [][]byte
+	size := 1400
+	for i := 0; ; i++ {
+		if i*size > len(raw) {
+			break
+		}
+		if i*size > len(raw)-size {
+			// Last packet, so it should resize.
+                        remain := len(raw) - i*size
+			b = append(b, raw[i*size:i*size + remain])
+			break
+		}
+		b = append(b, raw[i*size:(i*size)+size])
 	}
-	b[n-1] = raw[leng*(n-1):]
 	return b
+}
+
+func addHeader() {
 }
 
 func main() {
 	host, port, file := parseArgs()
 	service := host + ":" + port
 
-	udpAddr, err := net.ResolveUDPAddr("udp4", service)
+	remoteAddr, err := net.ResolveUDPAddr("udp4", service)
 	if err != nil {
 		panic(err)
 	}
-	conn, err := net.DialUDP("udp4", nil, udpAddr)
+	conn, err := net.DialUDP("udp4", nil, remoteAddr)
 	if err != nil {
 		panic(err)
 	}
@@ -62,6 +72,7 @@ func main() {
 	bytes := split(raw)
 
 	fmt.Println("Send a message to server from client.")
+
 	for i := 0; i < len(bytes); i++ {
 		header := make([]byte, 1)
 		header[0] = byte(i)
