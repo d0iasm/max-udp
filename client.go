@@ -112,11 +112,17 @@ func main() {
 	for isRemaining(fins) {
 		send(conn, packets, fins)
 
-		_, _, err := conn.ReadFromUDP(buf)
-		if err != nil {
-			panic(err)
+		// This is an arbitrary number to wait reply.
+		for i := 0; i < 10; i++ {
+			_, _, err := conn.ReadFromUDP(buf)
+			if err != nil {
+				panic(err)
+			}
+			fmt.Println("FIN:", buf[0])
+			fins[int(buf[0])] = true
+			if !isRemaining(fins) {
+				return
+			}
 		}
-		fmt.Println("FIN:", buf[0])
-		fins[int(buf[0])] = true
 	}
 }
