@@ -12,6 +12,16 @@ func parseArgs() string {
 	return *portPtr
 }
 
+func analyze(packet []byte) (uint8, bool, []byte) {
+	fin := false
+	fmt.Println("HEADER:", packet[0], packet[0]&(1<<7), packet[0]&127)
+	if packet[0]&(1<<7) == 128 { // 1000-0000b is 128
+		fin = true
+	}
+	n := uint8(packet[0] & 127) // 0111-1111b is 127
+	return n, fin, packet[1:]
+}
+
 func main() {
 	port := parseArgs()
 	service := "0.0.0.0:" + port
@@ -27,14 +37,23 @@ func main() {
 	defer conn.Close()
 
 	fmt.Println("Server is Running at " + conn.LocalAddr().String())
-	buf := make([]byte, 12000)
+	buf := make([]byte, 1500)
+	// 100 might not be enough.
+	content := make([][]byte, 100)
 	for {
-		n, _, err := conn.ReadFromUDP(buf)
+		n, client, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			panic(err)
 		}
-		//fmt.Println("Received: ", string(buf[:n]), " from ", addr)
 		//fmt.Print(buf[:n])
-		fmt.Println(buf[:n], string(buf[:n]))
+		fmt.Println("Recieved:", buf[:n], string(buf[:n]))
+		// Send the sequence number to client for set a FIN field.
+		seq, fin, payload := analyze(buf[:n])
+		ans := []byte{byte(seq)}
+		conn.WriteToUDP(ans, client)
+		content[seq] = payload
+		if fin {
+			fmt.Println("Get final packet.")
+		}
 	}
 }

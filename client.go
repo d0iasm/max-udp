@@ -70,6 +70,7 @@ func addHeader(b [][]byte) [][]byte {
 func send(conn *net.UDPConn, packets [][]byte, fins []bool) {
 	for i := 0; i < len(packets); i++ {
 		if !fins[i] {
+			fmt.Println("SEND:", packets[i])
 			conn.Write(packets[i])
 		}
 	}
@@ -103,12 +104,20 @@ func main() {
 	fmt.Println("File content:", string(raw))
 	bytes := split(raw)
 	packets := addHeader(bytes)
+	fmt.Println(packets)
 
 	fins := make([]bool, len(packets))
 
+	buf := make([]byte, 1500)
 	for isRemaining(fins) {
 		send(conn, packets, fins)
 		// For test.
+		n, _, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("FIN:", n)
+
 		for i := 0; i < len(fins); i++ {
 			fins[i] = true
 		}
