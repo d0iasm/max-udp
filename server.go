@@ -27,13 +27,13 @@ func main() {
 	defer conn.Close()
 
 	fmt.Println("Server is Running at " + conn.LocalAddr().String())
-	buf := make([]byte, 1500)
+	buf := make([]byte, 12000)
 	for {
 		n, _, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			panic(err)
 		}
 		//fmt.Println("Received: ", string(buf[:n]), " from ", addr)
-                fmt.Print(buf[:n])
+		fmt.Print(buf[:n])
 	}
 }

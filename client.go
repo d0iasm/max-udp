@@ -30,6 +30,18 @@ func readfile(f string) []byte {
 	return b
 }
 
+// Split an original bytes to N chunks.
+func split(raw []byte) [][]byte {
+	n := 10
+	leng := len(raw) / (n - 1)
+	b := make([][]byte, n)
+	for i := 0; i < n-1; i++ {
+		b[i] = raw[i*leng : (i*leng)+leng]
+	}
+	b[n-1] = raw[leng*(n-1):]
+	return b
+}
+
 func main() {
 	host, port, file := parseArgs()
 	service := host + ":" + port
@@ -44,8 +56,13 @@ func main() {
 	}
 	defer conn.Close()
 
-	bytes := readfile(file)
+	raw := readfile(file)
+        fmt.Println("File content: ", len(raw), raw)
+        fmt.Println("File content: ", string(raw))
+	bytes := split(raw)
 
 	fmt.Println("Send a message to server from client.")
-	conn.Write(bytes)
+	for i := 0; i < len(bytes); i++ {
+	  conn.Write(bytes[i])
+	}
 }
