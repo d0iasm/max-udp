@@ -53,7 +53,7 @@ func split(raw []byte) [][]byte {
 //    FIN (1 bit)
 //    Sequence number (7 bits)
 func addHeader(b [][]byte) [][]byte {
-  packets := make([][]byte, len(b))
+	packets := make([][]byte, len(b))
 	for i := 0; i < len(b); i++ {
 		header := make([]byte, 1)
 		header[0] = byte(i)
@@ -61,9 +61,27 @@ func addHeader(b [][]byte) [][]byte {
 			// Set a FIN flag.
 			header[0] |= (1 << 7)
 		}
-                packets[i] = append(header, b[i]...)
+		packets[i] = append(header, b[i]...)
 	}
 	return packets
+}
+
+// Send all non-finished packets to a remote address.
+func send(conn *net.UDPConn, packets [][]byte, fins []bool) {
+	for i := 0; i < len(packets); i++ {
+		if !fins[i] {
+			conn.Write(packets[i])
+		}
+	}
+}
+
+func isRemaining(fins []bool) bool {
+	for _, elm := range fins {
+		if !elm {
+			return true
+		}
+	}
+	return false
 }
 
 func main() {
@@ -84,14 +102,15 @@ func main() {
 	fmt.Println("File content:", len(raw), raw)
 	fmt.Println("File content:", string(raw))
 	bytes := split(raw)
-        packets := addHeader(bytes)
+	packets := addHeader(bytes)
 
-        fins := make([]int, len(packets))
+	fins := make([]bool, len(packets))
 
-	fmt.Println("Send a message to server from client.")
-	for i := 0; i < len(bytes); i++ {
-		header := make([]byte, 1)
-		header[0] = byte(i)
-		conn.Write(append(header, bytes[i]...))
+	for isRemaining(fins) {
+		send(conn, packets, fins)
+		// For test.
+		for i := 0; i < len(fins); i++ {
+			fins[i] = true
+		}
 	}
 }
