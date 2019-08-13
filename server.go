@@ -57,7 +57,7 @@ func main() {
 	fmt.Println("Server is Running at " + conn.LocalAddr().String())
 	buf := make([]byte, 1500)
 	// 100 might not be enough.
-	contents := make([][]byte, 100)
+	contents := make([][]byte, 10000)
 	finSeq := -1
 	for {
 		n, client, err := conn.ReadFromUDP(buf)

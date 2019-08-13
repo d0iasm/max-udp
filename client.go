@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"sync/atomic"
 )
 
 func parseArgs() (string, string, string) {
@@ -67,22 +68,32 @@ func addHeader(b [][]byte) [][]byte {
 }
 
 // Send all non-finished packets to a remote address.
-func send(conn *net.UDPConn, packets [][]byte, fins []bool) {
-	for i := 0; i < len(packets); i++ {
-		if !fins[i] {
-			fmt.Println("SEND:", packets[i])
-			conn.Write(packets[i])
+func send(conn *net.UDPConn, packets [][]byte, fins []int32) {
+	for {
+		isSend := false
+		for i := 0; i < len(packets); i++ {
+			if atomic.LoadInt32(&fins[i]) == 0 {
+				isSend = true
+				fmt.Println("SEND:", packets[i])
+				conn.Write(packets[i])
+			}
+		}
+		if !isSend {
+			return
 		}
 	}
 }
 
-func isRemaining(fins []bool) bool {
-	for _, elm := range fins {
-		if !elm {
-			return true
+func receive(conn *net.UDPConn, fins []int32) {
+	buf := make([]byte, 1500)
+	for {
+		_, _, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			panic(err)
 		}
+		fmt.Println("FIN:", buf[0])
+		atomic.StoreInt32(&fins[int(buf[0])], 1)
 	}
-	return false
 }
 
 func main() {
@@ -106,23 +117,9 @@ func main() {
 	packets := addHeader(bytes)
 	fmt.Println(packets)
 
-	fins := make([]bool, len(packets))
+	// The elements of fins is an atomic variable.
+	fins := make([]int32, len(packets))
 
-	buf := make([]byte, 1500)
-	for isRemaining(fins) {
-		send(conn, packets, fins)
-
-		// This is an arbitrary number to wait reply.
-		for i := 0; i < 10; i++ {
-			_, _, err := conn.ReadFromUDP(buf)
-			if err != nil {
-				panic(err)
-			}
-			fmt.Println("FIN:", buf[0])
-			fins[int(buf[0])] = true
-			if !isRemaining(fins) {
-				return
-			}
-		}
-	}
+	go receive(conn, fins)
+	send(conn, packets, fins)
 }
