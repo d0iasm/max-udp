@@ -34,7 +34,7 @@ func readfile(f string) []byte {
 // Split an original bytes to chunks which maximum size is 1400.
 func split(raw []byte) [][]byte {
 	var b [][]byte
-	size := 14 // TODO: 1400
+	size := 1400 // TODO: 1400
 	for i := 0; ; i++ {
 		if i*size > len(raw) {
 			break

@@ -74,7 +74,7 @@ func main() {
 		if fin {
 			finSeq = seq
 		}
-		contents[seq] = payload[:]
+		contents[seq] = payload
 		fmt.Println("CONTENT:", contents)
 
 		// Send the sequence number to client.
