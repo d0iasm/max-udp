@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"strconv"
 	"sync/atomic"
 )
 
@@ -34,7 +35,8 @@ func readfile(f string) []byte {
 // Split an original bytes to chunks which maximum size is 1400.
 func split(raw []byte) [][]byte {
 	var b [][]byte
-	size := 1400 // TODO: 1400
+        //size := 1400
+	size := 3
 	for i := 0; ; i++ {
 		if i*size > len(raw) {
 			break
@@ -74,7 +76,7 @@ func send(conn *net.UDPConn, packets [][]byte, fins []int32) {
 		for i := 0; i < len(packets); i++ {
 			if atomic.LoadInt32(&fins[i]) == 0 {
 				isSend = true
-				fmt.Println("SEND:", packets[i])
+				//fmt.Println("SEND:", packets[i])
 				conn.Write(packets[i])
 			}
 		}
@@ -85,19 +87,38 @@ func send(conn *net.UDPConn, packets [][]byte, fins []int32) {
 }
 
 func receive(conn *net.UDPConn, fins []int32) {
+	finsNonAtom := make([]int32, len(fins))
 	buf := make([]byte, 1500)
 	for {
-		_, _, err := conn.ReadFromUDP(buf)
+		n, _, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println("FIN:", buf[0])
-		atomic.StoreInt32(&fins[int(buf[0])], 1)
+		//fmt.Println("FIN:", buf[0])
+                i, _ := strconv.Atoi(string(buf[:n]))
+                fmt.Println("Receive: ", i)
+		atomic.StoreInt32(&fins[i], 1)
+		finsNonAtom[i] = 1
+        fmt.Println(finsNonAtom)
+		if checkSendAll(finsNonAtom) {
+			return
+		}
 	}
 }
 
+func checkSendAll(finsNonAtom []int32) bool {
+	for i := 0; i < len(finsNonAtom); i++ {
+		if finsNonAtom[0] == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// RFC 768 for UDP
+// https://tools.ietf.org/html/rfc768
 func main() {
-	host, port, file := parseArgs()
+	host, port, _ := parseArgs()
 	service := host + ":" + port
 
 	remoteAddr, err := net.ResolveUDPAddr("udp4", service)
@@ -110,16 +131,30 @@ func main() {
 	}
 	defer conn.Close()
 
-	raw := readfile(file)
-	fmt.Println("File content:", len(raw), raw)
-	fmt.Println("File content:", string(raw))
-	bytes := split(raw)
-	packets := addHeader(bytes)
-	fmt.Println(packets)
+	// Settings for src files.
+	i := 1
+	nFile := 2
+	filePrefix := "./"
+	//filePrefix := "../checkFiles/src/"
+	for {
+		// Send all packets for 1 file in this loop.
+		if i > nFile {
+			return // TODO: Remove.
+			i = 1
+		}
 
-	// The elements of fins is an atomic variable.
-	fins := make([]int32, len(packets))
+		raw := readfile(filePrefix + strconv.Itoa(i) + ".bin")
+		fmt.Println("File content:", strconv.Itoa(i)+".bin", len(raw), raw)
+		fmt.Println("File content:", string(raw))
+		bytes := split(raw)
+		packets := addHeader(bytes)
+		fmt.Println(packets)
 
-	go receive(conn, fins)
-	send(conn, packets, fins)
+		// The elements of fins is an atomic variable.
+		fins := make([]int32, len(packets))
+
+		go receive(conn, fins)
+		send(conn, packets, fins)
+		i++
+	}
 }
