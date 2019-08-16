@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"sync/atomic"
-	"time"
 )
 
 func parseArgs() (string, string, string) {
@@ -36,8 +35,7 @@ func readfile(f string) []byte {
 // Split an original bytes to chunks which maximum size is 1400.
 func split(raw []byte) [][]byte {
 	var b [][]byte
-	//size := 1400
-	size := 3
+	size := 1400
 	for i := 0; ; i++ {
 		if i*size > len(raw) {
 			break
@@ -60,6 +58,7 @@ func split(raw []byte) [][]byte {
 //    File number: 16 bits // 0~65535
 func addHeader(b [][]byte, fNum int) [][]byte {
 	packets := make([][]byte, len(b))
+
 	for i := 0; i < len(b); i++ {
 		header := make([]byte, 3)
 		header[0] = byte(i)
@@ -69,28 +68,35 @@ func addHeader(b [][]byte, fNum int) [][]byte {
 			// Set a FIN flag.
 			header[0] |= (1 << 7)
 		}
+		fNum2 := int(header[1]) << 8
+		fNum2 |= int(header[2])
+		fmt.Println("seq, fnum:", int(header[0]), fNum, fNum2, header)
 		packets[i] = append(header, b[i]...)
 	}
 	return packets
 }
 
 // Send all non-finished packets to a remote address.
-func send(conn *net.UDPConn, packets [][]byte, fNum int, fins [][]int32) {
-	fmt.Println("WILL SEND:", packets)
+func send(conn *net.UDPConn, packets [][][]byte, fNum int, fins [][]int32) {
 	for {
 		noSend := true
 		for i := fNum; i < fNum+10; i++ {
-			for j := 0; j < len(packets); j++ {
-				fmt.Println(fins)
+			if i >= len(packets) {
+				continue
+			}
+			for j := 0; j < 128; j++ {
+				if j >= len(packets[i]) {
+					continue
+				}
+				fmt.Println(i, j, len(packets), len(packets[i]))
 				if atomic.LoadInt32(&fins[i][j]) == 0 {
 					noSend = false
-					fmt.Println("SEND:", packets[j])
-					conn.Write(packets[j])
+					conn.Write(packets[i][j])
 				}
 			}
-			if !noSend {
-				return
-			}
+		}
+		if !noSend {
+			return
 		}
 	}
 }
@@ -100,17 +106,18 @@ func receive(conn *net.UDPConn, fins [][]int32) {
 	for {
 		_, _, err := conn.ReadFromUDP(buf)
 		if err != nil {
-			panic(err)
+			continue
+			//panic(err)
 		}
 		//fmt.Println("FIN:", buf[0])
 		seq, _ := strconv.Atoi(string(buf[0]))
 		fNum, _ := strconv.Atoi(string(buf[1:3]))
-		fmt.Println("Receive:", seq, fNum)
+		//fmt.Println("Receive:", seq, fNum)
 		atomic.StoreInt32(&fins[fNum][seq], 1)
 		if checkSendAll(fins, fNum) {
 			return
 		}
-		fmt.Println("RECEIVE:", fins)
+		//fmt.Println("RECEIVE:", fins)
 	}
 }
 
@@ -140,40 +147,38 @@ func main() {
 	defer conn.Close()
 
 	// Settings for src files.
-	i := 1
-	nFile := 2
-	filePrefix := "./"
-	//filePrefix := "../checkFiles/src/"
+	i := 0
+	nFile := 1000
+	fPrefix := "../checkFiles/src/"
 
 	// fins[fNum][Seq]
 	// The elements of fins is an atomic variable.
-	fins := make([][]int32, nFile+1)
-	for j := 0; j < nFile+1; j++ {
+	fins := make([][]int32, nFile)
+	for j := 0; j < nFile; j++ {
 		fins[j] = make([]int32, 128)
 	}
 
 	for {
 		// Send all packets for 1 file in this loop.
-		if i > nFile {
-			return
-			time.Sleep(1000)
+		if i > nFile+1 {
 			i = 1
 		}
+		packets := make([][][]byte, nFile)
+		for j := 0; j < 128; j++ {
+			packets[j] = make([][]byte, 128)
+		}
 
-		var packets [][]byte
-		for j := 0; j < 2; j++ {
+		for j := 0; j < 1; j++ {
 			fNum := i + j
-			raw := readfile(filePrefix + strconv.Itoa(fNum) + ".bin")
-			fmt.Println("File content:", strconv.Itoa(fNum)+".bin", len(raw), raw)
-			fmt.Println("File content:", string(raw))
+			raw := readfile(fPrefix + strconv.Itoa(fNum+1) + ".bin")
+			//fmt.Println("File content:", strconv.Itoa(fNum+1)+".bin", len(raw), raw)
+			//fmt.Println("File content:", string(raw))
 			bytes := split(raw)
-			newP := addHeader(bytes, fNum)
-			packets = append(packets, newP...)
+			packets[j] = addHeader(bytes, fNum)
 		}
 
 		go receive(conn, fins)
 		send(conn, packets, i, fins)
-		i += 2 // Send 10 files at the same time.
-		// i += 10 // Send 10 files at the same time.
+		i += 10 // Send 10 files at the same time.
 	}
 }

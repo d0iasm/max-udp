@@ -74,7 +74,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	//fmt.Println("Server is Running at " + conn.LocalAddr().String())
+	fmt.Println("Server is Running at " + conn.LocalAddr().String())
 
 	// Theoretical maximum size is 65,535 bytes (8 bytes header + 65,527 bytes payload).
 	// Acutual maximum size of payload is 65,507 bytes
@@ -83,20 +83,19 @@ func main() {
 	buf := make([]byte, 1500)
 
 	// Settings for dst files.
-	i := 1
-	nFile := 2
-	fPrefix := "./out2/"
-	//fPrefix := "../checkFiles/dst/"
+	i := 0
+	nFile := 1000
+	fPrefix := "../checkFiles/dst/"
 
 	// files[fNum][seq][i]
 	//   fNum: File number.
 	//   seq: Sequence number.
-	files := make([][][]byte, nFile+1)
-	finSeqs := make([]int, nFile+1)
-	completed := make([]bool, nFile+1)
+	files := make([][][]byte, nFile)
+	finSeqs := make([]int, nFile)
+	completed := make([]bool, nFile)
 
 	// Initialize inner slice.
-	for i := 1; i < nFile+1; i++ {
+	for i := 0; i < nFile; i++ {
 		files[i] = make([][]byte, 128)
 	}
 
@@ -112,24 +111,28 @@ func main() {
 		}
 		fmt.Println("\n\nRecieved:", buf[:n], string(buf[:n]))
 
+		if n < 1 {
+			continue
+		}
+
 		// Analyze a header.
 		seq, fin, fNum, payload := analyze(buf[:n])
-		fmt.Println("HEADER:", seq, fin, fNum)
-		fmt.Println("PAYLOAD:", payload)
+		//fmt.Println("HEADER:", seq, fin, fNum)
+		//fmt.Println("PAYLOAD:", payload)
 		if fin {
 			finSeqs[fNum] = seq
 		}
 		files[fNum][seq] = payload
-		fmt.Println("FILES:", files)
+		//fmt.Println("FILES:", files)
 
 		// Reply has 2 fields:
 		//   Sequence number: 7 bits (8 bits. The most upper bit is ignore.)
 		//   File number: 16 bits
 		ans := make([]byte, 3)
 		ans[0] = byte(seq)
-		ans[1] = byte(fNum >> 0)
+		ans[1] = byte(fNum >> 8)
 		ans[2] = byte(fNum & 255)
-		fmt.Println("ANS: ", ans)
+		//fmt.Println("ANS: ", ans)
 		_, err = conn.WriteToUDP(ans, client)
 		if err != nil {
 			panic(err)
@@ -137,7 +140,7 @@ func main() {
 
 		if !completed[fNum] && completeFile(fNum, files, finSeqs) {
 			fmt.Println("Get one file!", fNum)
-			writeToFile(fPrefix+strconv.Itoa(fNum)+".bin", files[fNum])
+			writeToFile(fPrefix+strconv.Itoa(fNum+1)+".bin", files[fNum])
 			completed[fNum] = true
 			i++
 		}
