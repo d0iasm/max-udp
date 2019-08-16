@@ -14,35 +14,33 @@ func parseArgs() string {
 	return *portPtr
 }
 
-func analyze(packet []byte) (int, bool, []byte) {
+func analyze(packet []byte) (int, bool, int, []byte) {
 	fin := false
-	payload := make([]byte, len(packet)-1)
-	copy(payload, packet[1:])    // Must copy because buffer is the same address.
+	payload := make([]byte, len(packet)-3)
+	copy(payload, packet[3:]) // Must copy because buffer is the same address.
+
+	// FIN.
 	if packet[0]&(1<<7) == 128 { // 1000-0000b is 128
 		fin = true
 	}
+	// Sequence number.
 	n := int(packet[0] & 127) // 0111-1111b is 127
-	return n, fin, payload
+	// File number.
+	fNum := int(packet[1]) << 8
+	fNum |= int(packet[2])
+	return n, fin, fNum, payload
 }
 
-func isRemaining(contents [][]byte, n int) bool {
-	if n == -1 {
+func completeFile(fNum int, files [][][]byte, finSeqs []int) bool {
+	if finSeqs[fNum] < 1 {
 		return false
 	}
-	for i := 0; i < n; i++ {
-		if len(contents[i]) == 0 {
-			return true
+	for i := 0; i < finSeqs[fNum]; i++ {
+		if len(files[fNum][i]) == 0 {
+			return false
 		}
 	}
-	return false
-}
-
-func result(contents [][]byte, finSeq int) {
-	fmt.Println("Result:")
-	for i := 0; i < finSeq+1; i++ {
-		fmt.Println(contents[i])
-		fmt.Println(string(contents[i]))
-	}
+	return true
 }
 
 func writeToFile(name string, contents [][]byte) {
@@ -82,51 +80,67 @@ func main() {
 	// Acutual maximum size of payload is 65,507 bytes
 	// (= 65,535 bytes - 20 bytes IP header - 8 bytes header)
 
+	buf := make([]byte, 1500)
+
 	// Settings for dst files.
 	i := 1
 	nFile := 2
-	filePrefix := "./out/"
-	//filePrefix := "../checkFiles/dst/"
+	fPrefix := "./out2/"
+	//fPrefix := "../checkFiles/dst/"
+
+	// files[fNum][seq][i]
+	//   fNum: File number.
+	//   seq: Sequence number.
+	files := make([][][]byte, nFile+1)
+	finSeqs := make([]int, nFile+1)
+	completed := make([]bool, nFile+1)
+
+	// Initialize inner slice.
+	for i := 1; i < nFile+1; i++ {
+		files[i] = make([][]byte, 128)
+	}
 
 	for {
-		// Receive all packets for 1 file in this loop.
-		finSeq := -1
-		// 100 might not be enough.
-		//contents := make([][]byte, 10000)
-		contents := make([][]byte, 10)
-	        buf := make([]byte, 1500)
-
-		for finSeq == -1 || isRemaining(contents, finSeq) {
-			// Receive a packet in this loop.
-			// You need to execute this loop many times to complete a file.
-			if i > nFile {
-				fmt.Printf("Got %d files.\n", nFile)
-				return
-			}
-
-			n, client, err := conn.ReadFromUDP(buf)
-			if err != nil {
-				panic(err)
-			}
-			fmt.Println("\n\nRecieved:", buf[:n], string(buf[:n]))
-
-			// Analyze a header.
-			seq, fin, payload := analyze(buf[:n])
-			fmt.Println("HEADER:", seq, fin)
-			fmt.Println("PAYLOAD:", payload)
-			if fin {
-				finSeq = seq
-			}
-			contents[seq] = payload
-			fmt.Println("CONTENT:", contents)
-
-			// Send the sequence number to client.
-			ans := []byte{byte(seq)}
-                        fmt.Println("ANS: ", ans)
-			conn.WriteToUDP(ans, client)
+		if i > nFile {
+			fmt.Printf("Got %d files.\n", nFile)
+			return
 		}
 
-		writeToFile(filePrefix+strconv.Itoa(i)+".bin", contents)
-		i++
+		n, client, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("\n\nRecieved:", buf[:n], string(buf[:n]))
+
+		// Analyze a header.
+		seq, fin, fNum, payload := analyze(buf[:n])
+		fmt.Println("HEADER:", seq, fin, fNum)
+		fmt.Println("PAYLOAD:", payload)
+		if fin {
+			finSeqs[fNum] = seq
+		}
+		files[fNum][seq] = payload
+		fmt.Println("FILES:", files)
+
+		// Reply has 2 fields:
+		//   Sequence number: 7 bits (8 bits. The most upper bit is ignore.)
+		//   File number: 16 bits
+		ans := make([]byte, 3)
+		ans[0] = byte(seq)
+		ans[1] = byte(fNum >> 0)
+		ans[2] = byte(fNum & 255)
+		fmt.Println("ANS: ", ans)
+		_, err = conn.WriteToUDP(ans, client)
+		if err != nil {
+			panic(err)
+		}
+
+		if !completed[fNum] && completeFile(fNum, files, finSeqs) {
+			fmt.Println("Get one file!", fNum)
+			writeToFile(fPrefix+strconv.Itoa(fNum)+".bin", files[fNum])
+			completed[fNum] = true
+			i++
+		}
 	}
+
 }

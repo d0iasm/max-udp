@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"sync/atomic"
+	"time"
 )
 
 func parseArgs() (string, string, string) {
@@ -35,7 +36,7 @@ func readfile(f string) []byte {
 // Split an original bytes to chunks which maximum size is 1400.
 func split(raw []byte) [][]byte {
 	var b [][]byte
-        //size := 1400
+	//size := 1400
 	size := 3
 	for i := 0; ; i++ {
 		if i*size > len(raw) {
@@ -52,14 +53,18 @@ func split(raw []byte) [][]byte {
 	return b
 }
 
+// Header size is 3 bytes.
 // 8-bit header has 2 fields:
-//    FIN (1 bit)
-//    Sequence number (7 bits)
-func addHeader(b [][]byte) [][]byte {
+//    FIN: 1 bit
+//    Sequence number: 7 bits
+//    File number: 16 bits // 0~65535
+func addHeader(b [][]byte, fNum int) [][]byte {
 	packets := make([][]byte, len(b))
 	for i := 0; i < len(b); i++ {
-		header := make([]byte, 1)
+		header := make([]byte, 3)
 		header[0] = byte(i)
+		header[1] = byte(fNum >> 8)  // Upper 8 bits
+		header[2] = byte(fNum & 255) // Lower 8 bits
 		if i == len(b)-1 {
 			// Set a FIN flag.
 			header[0] |= (1 << 7)
@@ -70,45 +75,48 @@ func addHeader(b [][]byte) [][]byte {
 }
 
 // Send all non-finished packets to a remote address.
-func send(conn *net.UDPConn, packets [][]byte, fins []int32) {
+func send(conn *net.UDPConn, packets [][]byte, fNum int, fins [][]int32) {
+	fmt.Println("WILL SEND:", packets)
 	for {
-		isSend := false
-		for i := 0; i < len(packets); i++ {
-			if atomic.LoadInt32(&fins[i]) == 0 {
-				isSend = true
-				//fmt.Println("SEND:", packets[i])
-				conn.Write(packets[i])
+		noSend := true
+		for i := fNum; i < fNum+10; i++ {
+			for j := 0; j < len(packets); j++ {
+				fmt.Println(fins)
+				if atomic.LoadInt32(&fins[i][j]) == 0 {
+					noSend = false
+					fmt.Println("SEND:", packets[j])
+					conn.Write(packets[j])
+				}
 			}
-		}
-		if !isSend {
-			return
+			if !noSend {
+				return
+			}
 		}
 	}
 }
 
-func receive(conn *net.UDPConn, fins []int32) {
-	finsNonAtom := make([]int32, len(fins))
+func receive(conn *net.UDPConn, fins [][]int32) {
 	buf := make([]byte, 1500)
 	for {
-		n, _, err := conn.ReadFromUDP(buf)
+		_, _, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			panic(err)
 		}
 		//fmt.Println("FIN:", buf[0])
-                i, _ := strconv.Atoi(string(buf[:n]))
-                fmt.Println("Receive: ", i)
-		atomic.StoreInt32(&fins[i], 1)
-		finsNonAtom[i] = 1
-        fmt.Println(finsNonAtom)
-		if checkSendAll(finsNonAtom) {
+		seq, _ := strconv.Atoi(string(buf[0]))
+		fNum, _ := strconv.Atoi(string(buf[1:3]))
+		fmt.Println("Receive:", seq, fNum)
+		atomic.StoreInt32(&fins[fNum][seq], 1)
+		if checkSendAll(fins, fNum) {
 			return
 		}
+		fmt.Println("RECEIVE:", fins)
 	}
 }
 
-func checkSendAll(finsNonAtom []int32) bool {
-	for i := 0; i < len(finsNonAtom); i++ {
-		if finsNonAtom[0] == 0 {
+func checkSendAll(fins [][]int32, fNum int) bool {
+	for i := 0; i < len(fins[fNum]); i++ {
+		if atomic.LoadInt32(&fins[fNum][i]) == 0 {
 			return false
 		}
 	}
@@ -136,25 +144,36 @@ func main() {
 	nFile := 2
 	filePrefix := "./"
 	//filePrefix := "../checkFiles/src/"
+
+	// fins[fNum][Seq]
+	// The elements of fins is an atomic variable.
+	fins := make([][]int32, nFile+1)
+	for j := 0; j < nFile+1; j++ {
+		fins[j] = make([]int32, 128)
+	}
+
 	for {
 		// Send all packets for 1 file in this loop.
 		if i > nFile {
-			return // TODO: Remove.
+			return
+			time.Sleep(1000)
 			i = 1
 		}
 
-		raw := readfile(filePrefix + strconv.Itoa(i) + ".bin")
-		fmt.Println("File content:", strconv.Itoa(i)+".bin", len(raw), raw)
-		fmt.Println("File content:", string(raw))
-		bytes := split(raw)
-		packets := addHeader(bytes)
-		fmt.Println(packets)
-
-		// The elements of fins is an atomic variable.
-		fins := make([]int32, len(packets))
+		var packets [][]byte
+		for j := 0; j < 2; j++ {
+			fNum := i + j
+			raw := readfile(filePrefix + strconv.Itoa(fNum) + ".bin")
+			fmt.Println("File content:", strconv.Itoa(fNum)+".bin", len(raw), raw)
+			fmt.Println("File content:", string(raw))
+			bytes := split(raw)
+			newP := addHeader(bytes, fNum)
+			packets = append(packets, newP...)
+		}
 
 		go receive(conn, fins)
-		send(conn, packets, fins)
-		i++
+		send(conn, packets, i, fins)
+		i += 2 // Send 10 files at the same time.
+		// i += 10 // Send 10 files at the same time.
 	}
 }
