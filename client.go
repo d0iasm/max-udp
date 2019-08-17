@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	//"fmt"
 	"io/ioutil"
 	"net"
 	"os"
@@ -70,7 +70,7 @@ func addHeader(b [][]byte, fNum int) [][]byte {
 		}
 		fNum2 := int(header[1]) << 8
 		fNum2 |= int(header[2])
-		fmt.Println("seq, fnum:", int(header[0]), fNum, fNum2, header)
+		//fmt.Println("seq, fnum:", int(header[0]), fNum, fNum2, header)
 		packets[i] = append(header, b[i]...)
 	}
 	return packets
@@ -86,9 +86,13 @@ func send(conn *net.UDPConn, packets [][][]byte, fNum int, fins [][]int32) {
 			}
 			for j := 0; j < 128; j++ {
 				if j >= len(packets[i]) {
-					continue
+					return
 				}
-				fmt.Println(i, j, len(packets), len(packets[i]))
+				if len(packets[i][j]) == 0 {
+					return
+
+				}
+				//fmt.Println("SEND:", i, j, packets[i][j], len(packets), len(packets[i]))
 				if atomic.LoadInt32(&fins[i][j]) == 0 {
 					noSend = false
 					conn.Write(packets[i][j])
@@ -159,20 +163,18 @@ func main() {
 	}
 
 	for {
-		// Send all packets for 1 file in this loop.
-		if i > nFile+1 {
-			i = 1
+		if i >= nFile - 11 {
+			i = 0
 		}
 		packets := make([][][]byte, nFile)
 		for j := 0; j < 128; j++ {
 			packets[j] = make([][]byte, 128)
 		}
 
-		for j := 0; j < 1; j++ {
+		// Connect 10 files.
+		for j := 0; j < 10; j++ {
 			fNum := i + j
 			raw := readfile(fPrefix + strconv.Itoa(fNum+1) + ".bin")
-			//fmt.Println("File content:", strconv.Itoa(fNum+1)+".bin", len(raw), raw)
-			//fmt.Println("File content:", string(raw))
 			bytes := split(raw)
 			packets[j] = addHeader(bytes, fNum)
 		}
